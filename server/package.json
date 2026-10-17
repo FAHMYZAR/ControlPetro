@@ -1,0 +1,1 @@
+{"dependencies":{"express":"^4.21.2"},"main":"server.cjs","name":"bridge-v3-server","private":true,"scripts":{"start":"node server.cjs"},"type":"commonjs","version":"3.0.0"}

@@ -1,0 +1,20 @@
+[
+  {
+    "autostart": true,
+    "command": "node server.cjs",
+    "cwd": "apps/hello",
+    "description": "Contoh app 1 - hello world",
+    "env": {},
+    "name": "hello",
+    "port": 3101
+  },
+  {
+    "autostart": true,
+    "command": "node server.cjs",
+    "cwd": "apps/demo",
+    "description": "Contoh app 2 - counter demo",
+    "env": {},
+    "name": "demo",
+    "port": 3102
+  }
+]

@@ -1,0 +1,1 @@
+{"main":"../server/server.cjs","name":"bridge-v3","private":true,"scripts":{"build":"npm --prefix frontend install && npm --prefix frontend run build && npm --prefix server install","dev":"npm --prefix server start","version":"3.0.0"}}
