@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Build output (dibangun ulang lewat `npm run build`)
+frontend/dist/
+
+# Kredensial & state lokal — JANGAN PERNAH di-commit
+.env
+**/.env
+server/domain.json
+server/monitor-history.json
+server/cloudflared-bin/
+**/token.txt
+
+# Log
+*.log
+
+# OS
+.DS_Store
