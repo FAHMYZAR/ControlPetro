@@ -1,0 +1,9 @@
+{
+  "name": "controlpetro",
+  "private": true,
+  "version": "3.0.0",
+  "description": "ControlPetro - panel kontrol multi-app. Copy ke /home/container/package.json di Pterodactyl biar `npm start` (CMD_RUN bawaan) langsung jalan.",
+  "scripts": {
+    "start": "node v3/run.cjs"
+  }
+}

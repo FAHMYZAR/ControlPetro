@@ -4,19 +4,31 @@
 
   let domain = null, loading = true;
   let err = '';
-  let busy = ''; // 'connect' | 'setup' | 'restart' | 'disconnect' | 'status'
+  let busy = ''; // 'connect' | 'setup' | 'restart' | 'disconnect' | 'status' | 'extraAdd' | 'extraDel'
   let apiToken = '', zones = [], zoneId = '', subdomain = '';
   let showSetup = false; // form pilih zone + subdomain sesudah connect sukses
   let showConnect = false; // form hubungkan (awal, atau ganti domain)
+  // Domain tambahan
+  let extraZones = [], extraZoneId = '', extraSubdomain = '', extraPort = '';
+  let showTambah = false, errExtra = '';
 
-  async function loadStatus() {
+  async function loadStatus(retry = 0) {
     busy = 'status';
     try {
       const r = await fetch('/api/domain/status', { credentials: 'same-origin' });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || 'gagal memuat status domain');
       domain = d.domain || null;
-    } catch (e) { err = e.message; }
+      err = '';
+    } catch (e) {
+      // Retry otomatis 2x (tiap 1.5 dtk) buat error transient,
+      // misal server lagi sibuk restart tunnel habis tambah/hapus domain.
+      if (retry < 2) {
+        await new Promise((ok) => setTimeout(ok, 1500));
+        return loadStatus(retry + 1);
+      }
+      err = e.message;
+    }
     busy = ''; loading = false;
   }
 
@@ -77,6 +89,56 @@
 
   function startChange() { showConnect = true; showSetup = false; err = ''; }
 
+  // --- Domain tambahan ---
+  $: previewHostname = (() => {
+    const sub = extraSubdomain.trim().toLowerCase();
+    const z = extraZones.find((x) => x.id === extraZoneId);
+    if (!sub || !z || !validSubdomain(sub)) return '';
+    return sub + '.' + z.name;
+  })();
+
+  async function mulaiTambah() {
+    errExtra = ''; showTambah = true;
+    if (!extraZones.length) {
+      try {
+        const r = await fetch('/api/domain/zones', { credentials: 'same-origin' });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || 'gagal ambil zones');
+        extraZones = d.zones || [];
+        extraZoneId = extraZones.length ? extraZones[0].id : '';
+      } catch (e) { errExtra = e.message; }
+    }
+  }
+
+  async function tambahExtra() {
+    const sub = extraSubdomain.trim().toLowerCase();
+    const port = parseInt(extraPort, 10);
+    if (!extraZoneId) { errExtra = 'Pilih zone dulu.'; return; }
+    if (!validSubdomain(sub)) { errExtra = 'Subdomain tidak valid. Pakai huruf kecil, angka, dan dash, tanpa spasi.'; return; }
+    if (!Number.isInteger(port) || port < 1 || port > 65535) { errExtra = 'Port harus angka 1-65535.'; return; }
+    errExtra = ''; busy = 'extraAdd';
+    try {
+      const r = await fetch('/api/domain/extra/add', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ zoneId: extraZoneId, subdomain: sub, port }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || 'gagal tambah domain');
+      showTambah = false; extraSubdomain = ''; extraPort = '';
+      await loadStatus();
+    } catch (e) { errExtra = e.message; }
+    busy = '';
+  }
+
+  async function hapusExtra(hostname) {
+    if (!window.confirm('Hapus domain ' + hostname + '? DNS dan aturan tunnel di Cloudflare ikut dihapus.')) return;
+    busy = 'extraDel';
+    try {
+      const r = await fetch('/api/domain/extra/delete', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hostname }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || 'gagal hapus domain');
+      await loadStatus();
+    } catch (e) { err = e.message; }
+    busy = '';
+  }
+
   $: dotClass = domain ? (domain.status === 'running' ? 'running' : domain.status === 'starting' || domain.status === 'restarting' ? 'restarting' : domain.status === 'crashed' ? 'crashed' : 'stopped') : 'stopped';
   $: connected = !!(domain && domain.connected);
 
@@ -118,6 +180,43 @@
       {/if}
       {#if !showConnect && !showSetup && err}<p class="err">{err}</p>{/if}
     </div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="row1"><h3>Domain Tambahan</h3></div>
+      <p class="muted2">Domain ekstra lewat tunnel yang sama, masing-masing ke port internal sendiri. Contoh: satu domain buat tiap app.</p>
+      {#if domain.extraDomains && domain.extraDomains.length}
+        <div class="extralist">
+          {#each domain.extraDomains as ex}
+            <div class="extrarow">
+              <div class="extrahost"><b>{ex.hostname}</b><span class="muted2"> → port {ex.port}</span></div>
+              <button class="btn small danger" disabled={busy !== ''} on:click={() => hapusExtra(ex.hostname)}><Icon name="trash" size={14} /> {busy === 'extraDel' ? 'Menghapus...' : 'Hapus'}</button>
+            </div>
+          {/each}
+        </div>
+      {:else}
+        <p class="muted2">Belum ada domain tambahan.</p>
+      {/if}
+      {#if !showTambah}
+        <button class="btn small" style="margin-top:12px" disabled={busy !== ''} on:click={mulaiTambah}><Icon name="plus" size={14} /> Tambah Domain</button>
+      {:else}
+        <label class="lbl">Zone</label>
+        <select bind:value={extraZoneId}>
+          {#each extraZones as z}<option value={z.id}>{z.name}</option>{/each}
+        </select>
+        <label class="lbl">Subdomain</label>
+        <input placeholder="contoh: bot" bind:value={extraSubdomain} />
+        {#if previewHostname}
+          <p class="preview">Jadinya: <b>{previewHostname}</b></p>
+        {/if}
+        <label class="lbl">Port Internal</label>
+        <input type="number" placeholder="contoh: 3101" bind:value={extraPort} min="1" max="65535" />
+        {#if errExtra}<p class="err">{errExtra}</p>{/if}
+        <div class="rowbtn" style="margin-top:10px">
+          <button class="btn primary small" disabled={busy !== ''} on:click={tambahExtra}>{busy === 'extraAdd' ? 'Memproses...' : 'Tambah'}</button>
+          <button class="btn small" disabled={busy !== ''} on:click={() => { showTambah = false; errExtra = ''; }}>Batal</button>
+        </div>
+      {/if}
+    </div>
   {:else}
     <div class="card">
       <p class="muted2">Belum ada domain.</p>
@@ -158,4 +257,10 @@
   .lbl{display:block;font-size:13px;font-weight:600;margin:14px 0 6px}
   .err{color:#FF3B30;font-size:13px;margin:10px 0 0}
   .logbox{margin-top:12px;background:rgba(0,0,0,.45);border:1px solid var(--border);border-radius:14px;padding:14px 16px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;line-height:1.7;max-height:220px;overflow:auto;white-space:pre-wrap;word-break:break-word;color:var(--text)}
+  .extralist{margin-top:12px;display:flex;flex-direction:column;gap:8px}
+  .extrarow{display:flex;align-items:center;justify-content:space-between;gap:10px;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:12px;padding:10px 12px;flex-wrap:wrap}
+  .extrahost{font-size:14px;word-break:break-all}
+  .extrahost .muted2{margin-left:6px}
+  .preview{margin:10px 0 0;font-size:14px;color:var(--muted)}
+  .preview b{color:var(--text)}
 </style>

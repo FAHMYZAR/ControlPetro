@@ -218,6 +218,37 @@ function stopDomain() {
   if (domainProc) { try { killGroup(domainProc, 'SIGTERM'); } catch {} domainProc = null; }
   domainStatus = 'stopped';
 }
+// Bangun ingress tunnel: domain utama -> PORT, domain tambahan -> port masing-masing.
+function buildIngress() {
+  const rules = [];
+  if (domainConfig && domainConfig.hostname) {
+    rules.push({ hostname: domainConfig.hostname, service: 'http://localhost:' + PORT });
+  }
+  for (const d of ((domainConfig && domainConfig.extraDomains) || [])) {
+    if (d && d.hostname && d.port) rules.push({ hostname: d.hostname, service: 'http://localhost:' + d.port });
+  }
+  rules.push({ service: 'http_status:404' });
+  return { ingress: rules };
+}
+// Sinkron ingress tunnel ke PORT saat ini (penting habis pindah server: alokasi port baru
+// beda dengan port waktu tunnel dibuat). Idempotent, jalan di background saat startup.
+// Kalau restart=true, tunnel di-restart biar config baru langsung ke-apply.
+async function syncDomainIngress(restart) {
+  try {
+    if (!domainConfig || !domainConfig.apiToken || !domainConfig.tunnelId || !domainConfig.accountId) return;
+    const cfg = buildIngress();
+    await cfApi(domainConfig.apiToken, 'PUT', '/accounts/' + domainConfig.accountId + '/cfd_tunnel/' + domainConfig.tunnelId + '/configurations', {
+      config: cfg,
+    });
+    domainPushLog('[domain] ingress disinkron (' + (cfg.ingress.length - 1) + ' hostname)');
+    if (restart) {
+      domainPushLog('[domain] restart tunnel biar config baru ke-apply...');
+      stopDomain(); domainManualStop = false; await startDomain();
+    }
+  } catch (e) {
+    domainPushLog('[domain] sinkron ingress gagal: ' + (e.message || e));
+  }
+}
 function domainPublic() {
   return {
     connected: !!(domainConfig && domainConfig.tunnelToken),
@@ -226,6 +257,9 @@ function domainPublic() {
     tunnelName: (domainConfig && domainConfig.tunnelName) || '',
     status: domainStatus,
     hasApiToken: !!(domainConfig && domainConfig.apiToken),
+    extraDomains: ((domainConfig && domainConfig.extraDomains) || []).map((d) => ({
+      hostname: d.hostname || '', port: d.port || 0, zoneName: d.zoneName || '',
+    })),
     logs: domainLogs.slice(-50).map((l) => l.line),
   };
 }
@@ -895,14 +929,13 @@ function backupInfo() {
     try { hasSession = fs.existsSync(path.join(cwd, 'session')) || fs.existsSync(path.join(cwd, 'sessions')) || fs.existsSync(path.join(cwd, 'auth_info_baileys')); } catch {}
     return { name: cfg.name, bytes: s.bytes, files: s.files, stack: cfg.stack || '', public: !!cfg.public, autostart: !!cfg.autostart, hasSession, description: cfg.description || '' };
   });
-  // Domain: domain.json TANPA apiToken (tunnel token ikut biar domain langsung nyambung,
-  // apiToken tidak ikut biar backup bocor pun Cloudflare aman).
+  // Domain: domain.json LENGKAP termasuk apiToken (biar habis restore langsung nyambung
+  // tanpa paste token ulang; jaga file backup jangan sampai bocor).
   const dom = (() => {
     try {
       if (!fs.existsSync(DOMAIN_FILE)) return { exists: false, bytes: 0, hostname: '' };
       const raw = JSON.parse(fs.readFileSync(DOMAIN_FILE, 'utf8'));
-      const stripped = Object.assign({}, raw, { apiToken: '' });
-      const txt = JSON.stringify(stripped, null, 2) + '\n';
+      const txt = JSON.stringify(raw, null, 2) + '\n';
       return { exists: !!(raw && raw.tunnelToken), bytes: Buffer.byteLength(txt), hostname: (raw && raw.hostname) || '' };
     } catch { return { exists: false, bytes: 0, hostname: '' }; }
   })();
@@ -952,14 +985,20 @@ app.get('/api/backup/download', (req, res) => {
         fs.copyFileSync(pwFile, stage(...rel.split(path.sep)));
       }
     }
-    // Domain (kalau dipilih): domain.json TANPA apiToken (tunnel token ikut, apiToken tidak).
+    // Domain (kalau dipilih): domain.json LENGKAP termasuk apiToken
+    // (biar habis restore tunnel langsung nyambung tanpa paste token ulang).
     if (includeDomain && fs.existsSync(DOMAIN_FILE)) {
       try {
         const raw = JSON.parse(fs.readFileSync(DOMAIN_FILE, 'utf8'));
-        const stripped = Object.assign({}, raw, { apiToken: '' });
-        fs.writeFileSync(stage('v3', 'server', 'domain.json'), JSON.stringify(stripped, null, 2) + '\n', { mode: 0o600 });
+        fs.writeFileSync(stage('v3', 'server', 'domain.json'), JSON.stringify(raw, null, 2) + '\n', { mode: 0o600 });
       } catch {}
     }
+    // package.json di root container (biar `npm start` bawaan egg langsung jalan habis restore,
+    // tanpa perlu ubah CMD_RUN manual).
+    try {
+      const rootPkg = path.join(HOME_CONTAINER, 'package.json');
+      if (fs.existsSync(rootPkg)) fs.copyFileSync(rootPkg, stage('package.json'));
+    } catch {}
     // App terpilih.
     for (const cfg of selected) {
       const src = resolveCwd(cfg);
@@ -1030,6 +1069,18 @@ app.post('/api/domain/setup', async (req, res) => {
     if (domainConfig.tunnelId) {
       try { await cfApi(apiToken, 'DELETE', '/accounts/' + accountId + '/cfd_tunnel/' + domainConfig.tunnelId); } catch {}
     }
+    // Bersihkan tunnel yatim dengan nama sama (misal habis "Putuskan" saat tanpa API token:
+    // tunnel di Cloudflare tidak terhapus tapi domain.json sudah ke-reset, sehingga
+    // pembuatan tunnel baru gagal dengan "already have a tunnel with this name").
+    try {
+      const namaTunnel = 'controlpetro-' + subdomain;
+      const daftar = await cfApi(apiToken, 'GET', '/accounts/' + accountId + '/cfd_tunnel?name=' + encodeURIComponent(namaTunnel));
+      for (const t of (Array.isArray(daftar) ? daftar : [])) {
+        if (t && t.name === namaTunnel && t.id) {
+          try { await cfApi(apiToken, 'DELETE', '/accounts/' + accountId + '/cfd_tunnel/' + t.id); } catch {}
+        }
+      }
+    } catch {}
     if (domainConfig.dnsRecordId && domainConfig.zoneId) {
       try { await cfApi(apiToken, 'DELETE', '/zones/' + domainConfig.zoneId + '/dns_records/' + domainConfig.dnsRecordId); } catch {}
     }
@@ -1045,14 +1096,87 @@ app.post('/api/domain/setup', async (req, res) => {
     const dns = await cfApi(apiToken, 'POST', '/zones/' + zoneId + '/dns_records', {
       type: 'CNAME', name: hostname, content: tunnelId + '.cfargotunnel.com', proxied: true,
     });
+    // Pertahankan domain tambahan (kalau ada): arahkan DNS-nya ke tunnel baru.
+    const keepExtras = (domainConfig && domainConfig.extraDomains) || [];
+    for (const d of keepExtras) {
+      if (d && d.dnsRecordId && d.zoneId) {
+        try {
+          await cfApi(apiToken, 'PUT', '/zones/' + d.zoneId + '/dns_records/' + d.dnsRecordId, {
+            type: 'CNAME', name: d.hostname, content: tunnelId + '.cfargotunnel.com', proxied: true,
+          });
+        } catch (e) { domainPushLog('[domain] gagal update DNS ' + d.hostname + ': ' + (e.message || e)); }
+      }
+    }
     domainConfig = {
       hostname, tunnelId, tunnelName: 'controlpetro-' + subdomain, tunnelToken,
       apiToken, zoneId, accountId, dnsRecordId: dns.id || '',
+      extraDomains: keepExtras,
     };
     saveDomain();
+    await syncDomainIngress(false);
     stopDomain(); domainManualStop = false; await startDomain();
     return res.json({ ok: true, hostname, tunnelId });
   } catch (e) { return res.status(400).json({ error: 'gagal pasang domain: ' + e.message }); }
+});
+// GET /api/domain/zones -> daftar zone aktif (pakai apiToken tersimpan).
+app.get('/api/domain/zones', async (req, res) => {
+  const apiToken = domainConfig && domainConfig.apiToken;
+  if (!apiToken) return res.status(400).json({ error: 'hubungkan Cloudflare dulu (paste API token)' });
+  try {
+    const zones = await cfApi(apiToken, 'GET', '/zones?status=active&per_page=100');
+    const list = (Array.isArray(zones) ? zones : []).map((z) => ({ id: z.id, name: z.name }));
+    return res.json({ ok: true, zones: list });
+  } catch (e) { return res.status(400).json({ error: 'gagal ambil zones: ' + e.message }); }
+});
+// POST /api/domain/extra/add {zoneId, subdomain, port} -> tambah domain ke tunnel yang sama.
+app.post('/api/domain/extra/add', async (req, res) => {
+  const zoneId = String((req.body || {}).zoneId || '').trim();
+  const subdomain = String((req.body || {}).subdomain || '').trim().toLowerCase();
+  const port = parseInt((req.body || {}).port, 10);
+  if (!zoneId || !subdomain) return res.status(400).json({ error: 'zoneId + subdomain wajib diisi' });
+  if (!/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(subdomain)) return res.status(400).json({ error: 'subdomain tidak valid (huruf/angka/dash, tanpa spasi)' });
+  if (!Number.isInteger(port) || port < 1 || port > 65535) return res.status(400).json({ error: 'port harus angka 1-65535' });
+  const apiToken = domainConfig && domainConfig.apiToken;
+  if (!apiToken) return res.status(400).json({ error: 'hubungkan Cloudflare dulu (paste API token)' });
+  if (!domainConfig || !domainConfig.tunnelId || !domainConfig.accountId) return res.status(400).json({ error: 'pasang domain utama dulu' });
+  try {
+    const zone = await cfApi(apiToken, 'GET', '/zones/' + zoneId);
+    const hostname = subdomain + '.' + zone.name;
+    const extras = domainConfig.extraDomains || [];
+    if (domainConfig.hostname === hostname || extras.some((d) => d.hostname === hostname)) {
+      return res.status(400).json({ error: 'domain sudah ada' });
+    }
+    // DNS CNAME: hostname -> <tunnelId>.cfargotunnel.com (proxied).
+    const dns = await cfApi(apiToken, 'POST', '/zones/' + zoneId + '/dns_records', {
+      type: 'CNAME', name: hostname, content: domainConfig.tunnelId + '.cfargotunnel.com', proxied: true,
+    });
+    if (!Array.isArray(domainConfig.extraDomains)) domainConfig.extraDomains = [];
+    domainConfig.extraDomains.push({ hostname, zoneId, zoneName: zone.name, dnsRecordId: (dns && dns.id) || '', port });
+    saveDomain();
+    await syncDomainIngress(true);
+    return res.json({ ok: true, hostname, port });
+  } catch (e) { return res.status(400).json({ error: 'gagal tambah domain: ' + e.message }); }
+});
+// POST /api/domain/extra/delete {hostname} -> hapus domain tambahan (+ DNS + ingress di Cloudflare).
+app.post('/api/domain/extra/delete', async (req, res) => {
+  const hostname = String((req.body || {}).hostname || '').trim().toLowerCase();
+  if (!hostname) return res.status(400).json({ error: 'hostname wajib diisi' });
+  const apiToken = domainConfig && domainConfig.apiToken;
+  if (!apiToken) return res.status(400).json({ error: 'hubungkan Cloudflare dulu (paste API token)' });
+  try {
+    const extras = (domainConfig && domainConfig.extraDomains) || [];
+    const idx = extras.findIndex((d) => d && d.hostname === hostname);
+    if (idx < 0) return res.status(404).json({ error: 'domain tidak ditemukan' });
+    const item = extras[idx];
+    // Hapus DNS record di Cloudflare.
+    if (item.dnsRecordId && item.zoneId) {
+      try { await cfApi(apiToken, 'DELETE', '/zones/' + item.zoneId + '/dns_records/' + item.dnsRecordId); } catch {}
+    }
+    extras.splice(idx, 1);
+    saveDomain();
+    await syncDomainIngress(true);
+    return res.json({ ok: true, hostname });
+  } catch (e) { return res.status(400).json({ error: 'gagal hapus domain: ' + e.message }); }
 });
 app.post('/api/domain/disconnect', async (req, res) => {
   const apiToken = domainConfig && domainConfig.apiToken;
@@ -1064,11 +1188,17 @@ app.post('/api/domain/disconnect', async (req, res) => {
     if (apiToken && old.dnsRecordId && old.zoneId) {
       try { await cfApi(apiToken, 'DELETE', '/zones/' + old.zoneId + '/dns_records/' + old.dnsRecordId); } catch {}
     }
+    // Hapus juga DNS domain tambahan.
+    for (const d of (old.extraDomains || [])) {
+      if (apiToken && d && d.dnsRecordId && d.zoneId) {
+        try { await cfApi(apiToken, 'DELETE', '/zones/' + d.zoneId + '/dns_records/' + d.dnsRecordId); } catch {}
+      }
+    }
   } catch {}
   stopDomain();
   // API token dipertahankan (biar bisa pasang domain baru tanpa paste ulang).
   // Tunnel di Cloudflare yang tidak terhapus (kalau tanpa API token) harus dihapus manual.
-  domainConfig = { hostname: '', tunnelId: '', tunnelName: '', tunnelToken: '', apiToken: apiToken || '', zoneId: '', accountId: old.accountId || '', dnsRecordId: '' };
+  domainConfig = { hostname: '', tunnelId: '', tunnelName: '', tunnelToken: '', apiToken: apiToken || '', zoneId: '', accountId: old.accountId || '', dnsRecordId: '', extraDomains: [] };
   saveDomain();
   return res.json({ ok: true, note: apiToken ? 'Tunnel + DNS dihapus dari Cloudflare.' : 'Tunnel dihentikan lokal. Hapus tunnel + DNS manual di dashboard Cloudflare (tanpa API token).' });
 });
@@ -1437,7 +1567,7 @@ function autoInstallThenStart(cfg) {
 const server = app.listen(PORT, HOST, () => {
   log('bridge v3 listening on ' + HOST + ':' + PORT + ' (user=' + BRIDGE_USER + ')');
   appConfigs.forEach((cfg) => { initApp(cfg); if (cfg.autostart) autoInstallThenStart(cfg); });
-  if (domainConfig && domainConfig.tunnelToken) startDomain();
+  if (domainConfig && domainConfig.tunnelToken) { startDomain(); syncDomainIngress(false); }
 });
 function shutdown(sig) {
   log('shutdown', sig);
