@@ -30,6 +30,7 @@
           <button class="btn small" on:click|stopPropagation={() => onAct(a.name, 'start')}><Icon name="play" size={14} /> Start</button>
           <button class="btn small" on:click|stopPropagation={() => onAct(a.name, 'stop')}><Icon name="stop" size={14} /> Stop</button>
           <button class="btn small" on:click|stopPropagation={() => onAct(a.name, 'restart')}><Icon name="refresh" size={14} /> Restart</button>
+          {#if a.suspended}<button class="btn small primary" on:click|stopPropagation={() => onAct(a.name, 'resume')}><Icon name="play" size={14} /> Aktifkan</button>{:else}<button class="btn small" on:click|stopPropagation={() => onAct(a.name, 'suspend')}><Icon name="pause" size={14} /> Suspend</button>{/if}
           <button class="btn small primary" on:click|stopPropagation={() => window.open('/app/' + a.name + '/', '_blank')}><Icon name="open" size={14} /> Buka</button>
           <button class="btn small" class:primary={a.public} title={a.public ? 'Publik: bisa dibuka siapa aja tanpa login' : 'Private: hanya yang login'} on:click|stopPropagation={() => onTogglePublic && onTogglePublic(a.name, !a.public)}><Icon name={a.public ? 'eye' : 'lock'} size={14} /> {a.public ? 'Publik' : 'Private'}</button>
           <button class="btn small" on:click|stopPropagation={() => onOpenLogs(a.name)}><Icon name="logs" size={14} /> Log</button>

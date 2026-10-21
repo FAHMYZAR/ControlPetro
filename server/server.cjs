@@ -111,8 +111,8 @@ function pushLog(app, line) {
   if (app.logs.length > 1000) app.logs.splice(0, app.logs.length - 1000);
 }
 function initApp(cfg) {
-  if (!apps.has(cfg.name)) apps.set(cfg.name, { cfg, proc: null, status: 'stopped', logs: [], restarts: 0, crashWindow: [], manualStop: false, lastStart: 0 });
-  else apps.get(cfg.name).cfg = cfg;
+  if (!apps.has(cfg.name)) apps.set(cfg.name, { cfg, proc: null, status: cfg.suspended ? 'suspended' : 'stopped', logs: [], restarts: 0, crashWindow: [], manualStop: false, lastStart: 0 });
+  else { const a = apps.get(cfg.name); a.cfg = cfg; if (cfg.suspended && !a.proc) a.status = 'suspended'; }
 }
 appConfigs.forEach(initApp);
 
@@ -292,6 +292,7 @@ function detectStaticApp(cfg, cwd) {
 function startApp(name) {
   const app = apps.get(name);
   if (!app) return false;
+  if (app.cfg.suspended) { app.status = 'suspended'; pushLog(app, '[bridge] start dibatalkan: app sedang disuspend'); return false; }
   app.manualStop = false;
   if (app.proc) {
     if (app.status === 'running') return true;
@@ -325,7 +326,7 @@ function startApp(name) {
   proc.on('exit', (code, signal) => {
     pushLog(app, '[bridge] exited code=' + code + ' signal=' + signal);
     app.proc = null;
-    if (app.manualStop) { app.status = 'stopped'; return; }
+    if (app.manualStop) { app.status = app.cfg.suspended ? 'suspended' : 'stopped'; return; }
     const now = Date.now();
     app.crashWindow = app.crashWindow.filter((t) => now - t < 60000);
     app.crashWindow.push(now);
@@ -340,11 +341,33 @@ function killGroup(proc, sig) { try { process.kill(-proc.pid, sig); } catch { tr
 function stopApp(name) {
   const app = apps.get(name);
   if (!app) return false;
-  if (!app.proc) { app.status = 'stopped'; return true; }
+  if (!app.proc) { app.status = app.cfg.suspended ? 'suspended' : 'stopped'; return true; }
   app.manualStop = true; app.status = 'stopping';
   killGroup(app.proc, 'SIGTERM');
   setTimeout(() => { if (app.proc) killGroup(app.proc, 'SIGKILL'); }, 3000);
   return true;
+}
+// Suspend: matikan app + tandai cfg.suspended di apps.json. Guard di startApp bikin
+// app tidak bisa jalan lagi dari jalur mana pun (autostart boot, auto-install,
+// crash-restart, start manual) sampai di-resume. Resume: cabut tanda + jalankan.
+function suspendApp(name) {
+  const app = apps.get(name);
+  if (!app) return false;
+  app.cfg.suspended = true;
+  saveApps();
+  if (app.proc) stopApp(name);
+  app.status = 'suspended';
+  pushLog(app, '[bridge] app disuspend (tidak akan autostart sampai di-resume)');
+  return true;
+}
+function resumeApp(name) {
+  const app = apps.get(name);
+  if (!app) return false;
+  app.cfg.suspended = false;
+  saveApps();
+  app.status = 'stopped';
+  pushLog(app, '[bridge] suspend dicabut, app dijalankan lagi');
+  return startApp(name);
 }
 
 // ---- terminal ----
@@ -393,7 +416,7 @@ function createTerm(opts) {
 function appListJson() {
   return Array.from(apps.values()).map((a) => ({
     name: a.cfg.name, description: a.cfg.description || '', command: a.cfg.command,
-    port: a.cfg.port, status: a.status, restarts: a.restarts, autostart: !!a.cfg.autostart,
+    port: a.cfg.port, status: a.status, restarts: a.restarts, autostart: !!a.cfg.autostart, suspended: !!a.cfg.suspended,
     proxy: '/app/' + a.cfg.name + '/', public: !!a.cfg.public,
     installCommand: a.cfg.installCommand || '', buildCommand: a.cfg.buildCommand || '',
   }));
@@ -763,7 +786,7 @@ app.get('/api/apps/:name', (req, res) => {
   const name = decodeURIComponent(req.params.name);
   const a = apps.get(name);
   if (!a) return res.status(404).json({ error: 'app not found' });
-  return res.json({ ok: true, app: { name: a.cfg.name, description: a.cfg.description || '', command: a.cfg.command, port: a.cfg.port, status: a.status, autostart: !!a.cfg.autostart, env: a.cfg.env || {}, stack: a.cfg.stack || '', installCommand: a.cfg.installCommand || '', buildCommand: a.cfg.buildCommand || '', public: !!a.cfg.public } });
+  return res.json({ ok: true, app: { name: a.cfg.name, description: a.cfg.description || '', command: a.cfg.command, port: a.cfg.port, status: a.status, autostart: !!a.cfg.autostart, suspended: !!a.cfg.suspended, env: a.cfg.env || {}, stack: a.cfg.stack || '', installCommand: a.cfg.installCommand || '', buildCommand: a.cfg.buildCommand || '', public: !!a.cfg.public } });
 });
 app.get('/api/apps/:name/detect', (req, res) => {
   const name = decodeURIComponent(req.params.name);
@@ -1215,6 +1238,8 @@ app.post('/api/apps/:name/:act', (req, res) => {
   if (act === 'logs') { const limit = parseInt(req.query.limit || '200', 10); return res.json({ logs: a.logs.slice(-limit) }); }
   if (act === 'start') startApp(name);
   else if (act === 'stop') stopApp(name);
+  else if (act === 'suspend') suspendApp(name);
+  else if (act === 'resume') resumeApp(name);
   else if (act === 'restart') { stopApp(name); setTimeout(() => startApp(name), 4000); }
   else return res.status(404).json({ error: 'unknown action' });
   return res.json({ ok: true, app: name, action: act });
@@ -1546,6 +1571,7 @@ function needsAutoInstall(cfg) {
   return false;
 }
 function autoInstallThenStart(cfg) {
+  if (cfg.suspended) { const a = apps.get(cfg.name); if (a) a.status = 'suspended'; return false; }
   if (!needsAutoInstall(cfg)) return startApp(cfg.name);
   const app = apps.get(cfg.name);
   const cwd = resolveCwd(cfg);

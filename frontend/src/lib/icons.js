@@ -23,6 +23,7 @@ export const ICONS = {
   download: '<path d="M12 3v12"/><path d="M6 11l6 6 6-6"/><path d="M4 21h16a1 1 0 0 0 1-1v-2"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
   power: '<path d="M12 3v9"/><path d="M6.3 6.5a8 8 0 1 0 11.4 0"/>',
+  pause: '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>',
   chevronDown: '<path d="M6 9l6 6 6-6"/>',
   server: '<rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><path d="M6 6.5h.01"/><path d="M6 17.5h.01"/>',
   cpu: '<rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M12 1v3"/><path d="M12 20v3"/><path d="M1 12h3"/><path d="M20 12h3"/><path d="M5 1v3"/><path d="M19 1v3"/><path d="M5 20v3"/><path d="M19 20v3"/>',

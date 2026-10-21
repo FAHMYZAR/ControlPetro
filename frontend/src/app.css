@@ -71,6 +71,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--text)}
 .dot.stopped{background:#8E8E93}
 .dot.restarting,.dot.stopping{background:#FF9F0A}
 .dot.crashed{background:#FF3B30}
+.dot.suspended{background:#AF52DE}
 .switch{position:relative;width:52px;height:32px;display:inline-block;flex:none}
 .switch input{opacity:0;width:0;height:0}
 .slider{position:absolute;inset:0;background:#E9E9EA;border-radius:999px;transition:.2s;cursor:pointer}
