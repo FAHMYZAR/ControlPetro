@@ -1,36 +1,7 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
   import Icon from './Icon.svelte';
   export let onLogin;
-  let username = 'admin', password = '', remember = true, show = false, err = '', busy = false, canvasEl, threeCleanup = null;
-
-  async function initThree() {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    try {
-      const THREE = await import('three');
-      if (!canvasEl) return;
-      const renderer = new THREE.WebGLRenderer({ canvas: canvasEl, alpha: true, antialias: true });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-      const scene = new THREE.Scene();
-      const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 100);
-      camera.position.z = 6;
-      const N = 220, pos = new Float32Array(N * 3);
-      for (let i = 0; i < N; i++) { pos[i*3] = (Math.random()-0.5)*10; pos[i*3+1] = (Math.random()-0.5)*7; pos[i*3+2] = (Math.random()-0.5)*4; }
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      const mat = new THREE.PointsMaterial({ color: 0x888888, size: 0.06, transparent: true, opacity: 0.7 });
-      const points = new THREE.Points(geo, mat);
-      scene.add(points);
-      let raf = 0, t = 0, alive = true;
-      function resize() { if (!canvasEl) return; const w = canvasEl.clientWidth || window.innerWidth, h = canvasEl.clientHeight || window.innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
-      resize(); window.addEventListener('resize', resize);
-      function tick() { if (!alive) return; t += 0.0022; points.rotation.y = t; points.rotation.x = Math.sin(t*0.7)*0.08; renderer.render(scene, camera); raf = requestAnimationFrame(tick); }
-      tick();
-      threeCleanup = () => { alive = false; cancelAnimationFrame(raf); window.removeEventListener('resize', resize); geo.dispose(); mat.dispose(); renderer.dispose(); };
-    } catch (e) { /* fallback gradient CSS stays */ }
-  }
-  onMount(() => { initThree(); });
-  onDestroy(() => { if (threeCleanup) threeCleanup(); });
+  let username = 'admin', password = '', remember = true, show = false, err = '', busy = false;
 
   async function submit() {
     err = ''; busy = true;
@@ -45,7 +16,6 @@
 </script>
 
 <div class="login-wrap">
-  <canvas bind:this={canvasEl} class="login-bg" aria-hidden="true"></canvas>
   <div class="login-grad" aria-hidden="true"></div>
   <div class="login-card glass-strong anim-pop">
     <img class="logo-img" src="/logo.png" alt="ControlPetro" />
@@ -86,7 +56,7 @@
   .remember{display:flex;gap:10px;align-items:center;font-weight:400;color:var(--muted);cursor:pointer;margin-top:14px;user-select:none;-webkit-tap-highlight-color:transparent}
   .remember-input{position:absolute;opacity:0;width:0;height:0;pointer-events:none}
   .remember:focus-within .checkbox{box-shadow:0 0 0 3px rgba(0,122,255,.28)}
-  .checkbox{width:22px;height:22px;flex:none;border-radius:7px;border:1.5px solid var(--border);background:rgba(255,255,255,.65);backdrop-filter:blur(12px) saturate(160%);display:flex;align-items:center;justify-content:center;transition:background .18s ease,border-color .18s ease,transform .15s ease,box-shadow .18s ease;box-shadow:inset 0 1px 0 rgba(255,255,255,.5)}
+  .checkbox{width:22px;height:22px;flex:none;border-radius:7px;border:1.5px solid var(--border);background:rgba(255,255,255,.65);display:flex;align-items:center;justify-content:center;transition:background .18s ease,border-color .18s ease,transform .15s ease,box-shadow .18s ease;box-shadow:inset 0 1px 0 rgba(255,255,255,.5)}
   :global([data-theme="dark"]) .checkbox{background:rgba(28,28,30,.65);box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}
   .remember:hover .checkbox{border-color:var(--text);transform:scale(1.06)}
   .remember:active .checkbox{transform:scale(.94)}

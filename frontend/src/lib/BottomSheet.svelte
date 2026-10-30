@@ -388,7 +388,7 @@
   .filelist{font-size:13px;color:var(--muted);margin-top:6px}
   .filelist.over{color:#FF3B30;font-weight:600}
   .file-input-hidden{position:absolute;opacity:0;width:0;height:0;pointer-events:none}
-  .dropzone{position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;padding:22px 16px;border:1.5px dashed var(--border);border-radius:18px;background:rgba(255,255,255,.55);-webkit-backdrop-filter:blur(16px) saturate(160%);backdrop-filter:blur(16px) saturate(160%);cursor:pointer;transition:border-color .18s ease,transform .15s ease,box-shadow .18s ease}
+  .dropzone{position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;padding:22px 16px;border:1.5px dashed var(--border);border-radius:18px;background:rgba(255,255,255,.55);cursor:pointer;transition:border-color .18s ease,transform .15s ease,box-shadow .18s ease}
   :global([data-theme="dark"]) .dropzone{background:rgba(28,28,30,.55)}
   .dropzone:hover{border-color:var(--text);transform:translateY(-1px);box-shadow:0 8px 24px rgba(0,0,0,.08)}
   .dropzone:active{transform:scale(.98)}
@@ -398,7 +398,7 @@
   .dropsub{font-size:12px;color:var(--muted)}
   .droppick{display:inline-flex;gap:6px;align-items:center;margin-top:4px;pointer-events:none}
   .filechips{display:flex;flex-direction:column;gap:8px;margin-top:10px}
-  .filechip{display:flex;gap:8px;align-items:center;background:var(--glass-bg);-webkit-backdrop-filter:blur(16px) saturate(160%);backdrop-filter:blur(16px) saturate(160%);border:1px solid var(--glass-border);border-radius:12px;padding:9px 10px}
+  .filechip{display:flex;gap:8px;align-items:center;background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:12px;padding:9px 10px}
   .chipname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:600}
   .filechip small{color:var(--muted);font-size:12px;flex:none}
   .chipx{width:24px;height:24px;flex:none;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:16px;line-height:1;cursor:pointer}

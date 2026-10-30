@@ -237,8 +237,7 @@
   :global([data-theme="light"]) .xterm-wrap{background:#FFFFFF}
   .xterm-wrap :global(.xterm){height:100%}
   .xterm-wrap :global(.xterm-viewport){overflow-y:auto}
-  .termuxbar{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;padding:8px;border:1px solid var(--border);border-radius:14px;background:var(--glass-bg);-webkit-backdrop-filter:blur(16px) saturate(160%);backdrop-filter:blur(16px) saturate(160%)}
-  .tb{min-width:44px;padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:13px;font-weight:700;cursor:pointer}
+  .termuxbar{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;padding:8px;border:1px solid var(--border);border-radius:14px;background:var(--glass-bg);padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:13px;font-weight:700;cursor:pointer}
   .tb:active{transform:scale(.94)}
   .tb.on{background:var(--text);color:var(--bg);border-color:var(--text)}
   .tb.danger{color:#FF3B30}

@@ -1,8 +1,8 @@
 # Dependencies
 node_modules/
 
-# Build output (dibangun ulang lewat `npm run build`)
-frontend/dist/
+# Build output frontend ikut di-commit supaya clone langsung siap jalan (npm start)
+# tanpa harus build dulu. Kalau mau build ulang: `npm run build` di frontend/.
 
 # Kredensial & state lokal — JANGAN PERNAH di-commit
 .env

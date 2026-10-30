@@ -12,6 +12,7 @@ const path = require('path');
 const crypto = require('crypto');
 const os = require('os');
 const http = require('http');
+const https = require('https');
 const { spawn, spawnSync } = require('child_process');
 
 const BRIDGE_DIR = __dirname; // v3/server
@@ -25,6 +26,48 @@ const BRIDGE_USER = process.env.BRIDGE_USER || 'admin';
 const STARTED_AT = Date.now();
 
 function log(...a) { console.log(new Date().toISOString(), '[bridge-v3]', ...a); }
+
+// ---- Banner akses saat startup: tampilkan IP + kredensial login di log ----
+// Biar gampang tahu alamat panel setelah start dari Pterodactyl.
+function localIpv4() {
+  const out = [];
+  try {
+    for (const addrs of Object.values(os.networkInterfaces())) {
+      for (const a of addrs || []) {
+        if (a && a.family === 'IPv4' && !a.internal) out.push(a.address);
+      }
+    }
+  } catch {}
+  return [...new Set(out)];
+}
+function fetchPublicIp(timeoutMs) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (v) => { if (!done) { done = true; resolve(v); } };
+    try {
+      const req = https.get('https://api.ipify.org', { timeout: timeoutMs || 4000 }, (res) => {
+        let d = '';
+        res.on('data', (c) => { d += c; if (d.length > 64) { try { res.destroy(); } catch {} finish(null); } });
+        res.on('end', () => finish((d || '').trim() || null));
+      });
+      req.on('timeout', () => { try { req.destroy(); } catch {} finish(null); });
+      req.on('error', () => finish(null));
+    } catch { finish(null); }
+  });
+}
+async function printAccessBanner(port) {
+  const ips = localIpv4();
+  const pub = await fetchPublicIp(4000);
+  const L = [];
+  L.push('==============================================================');
+  L.push(' ControlPetro v3 siap!');
+  if (pub) L.push(' Silahkan akses ke: http://' + pub + ':' + port + '  (IP publik)');
+  ips.forEach((ip) => L.push(' Silahkan akses ke: http://' + ip + ':' + port + '  (IP container)'));
+  if (!pub && !ips.length) L.push(' Silahkan akses ke: http://<ip-server>:' + port);
+  L.push(' Login -> user: ' + BRIDGE_USER + ' | password: ' + BRIDGE_PASSWORD);
+  L.push('==============================================================');
+  L.forEach((l) => log(l));
+}
 
 function loadPassword() {
   if (process.env.BRIDGE_PASSWORD) return process.env.BRIDGE_PASSWORD;
@@ -1291,7 +1334,7 @@ function resolveFMPath(rel) {
   const segs = rest.split('/');
   for (const s of segs) {
     if (!s || s === '.' || s === '..' || s.includes('\0')) throw fmErr('nama path tidak valid', 400);
-    if (s === '.env' || s === 'node_modules' || s === '.git') throw fmErr('path tidak diizinkan: ' + s, 403);
+    if (s === 'node_modules' || s === '.git') throw fmErr('path tidak diizinkan: ' + s, 403);
   }
   const fsPath = path.join(APPS_DIR, rest);
   let cur = fsPath;
@@ -1309,7 +1352,7 @@ app.get('/api/files', (req, res) => {
     const st = fs.statSync(fsPath);
     if (!st.isDirectory()) return res.status(400).json({ error: 'bukan folder' });
     const entries = fs.readdirSync(fsPath, { withFileTypes: true })
-      .filter((d) => d.name !== '.env' && d.name !== '.git' && d.name !== 'node_modules')
+      .filter((d) => d.name !== '.git' && d.name !== 'node_modules')
       .map((d) => {
         const p = path.join(fsPath, d.name);
         let s; try { s = fs.statSync(p); } catch { return null; }
@@ -1592,6 +1635,7 @@ function autoInstallThenStart(cfg) {
 }
 const server = app.listen(PORT, HOST, () => {
   log('bridge v3 listening on ' + HOST + ':' + PORT + ' (user=' + BRIDGE_USER + ')');
+  printAccessBanner(PORT).catch(() => {});
   appConfigs.forEach((cfg) => { initApp(cfg); if (cfg.autostart) autoInstallThenStart(cfg); });
   if (domainConfig && domainConfig.tunnelToken) { startDomain(); syncDomainIngress(false); }
 });

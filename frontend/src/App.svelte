@@ -5,13 +5,20 @@
   import Login from './lib/Login.svelte';
   import Home from './lib/Home.svelte';
   import Apps from './lib/Apps.svelte';
-  import TerminalView from './lib/TerminalView.svelte';
   import Logs from './lib/Logs.svelte';
   import Settings from './lib/Settings.svelte';
   import BottomSheet from './lib/BottomSheet.svelte';
   import BackupSheet from './lib/BackupSheet.svelte';
   import FileManager from './lib/FileManager.svelte';
   import Domain from './lib/Domain.svelte';
+  import EnvSheet from './lib/EnvSheet.svelte';
+
+  // Terminal (xterm) dimuat malas: hanya saat menu Terminal dibuka,
+  // supaya bundle awal tidak membawa xterm (~300 KB) di setiap halaman.
+  let TerminalView = null;
+  async function ensureTerminal() {
+    if (!TerminalView) TerminalView = (await import('./lib/TerminalView.svelte')).default;
+  }
 
   const NAV = [
     { id: 'home', label: 'Beranda', icon: 'home' },
@@ -28,7 +35,7 @@
   let filePath = 'apps', fileNonce = 0;
   function openFiles(path) { filePath = path || 'apps'; fileNonce += 1; go('files'); }
   let termTargetApp = '';
-  function openTerm(name) { termTargetApp = name || ''; view = 'terminal'; drawer = false; location.hash = 'terminal'; }
+  function openTerm(name) { termTargetApp = name || ''; ensureTerminal(); view = 'terminal'; drawer = false; location.hash = 'terminal'; }
 
   function showToast(m) { toast = m; clearTimeout(toastTimer); toastTimer = setTimeout(() => toast = '', 2600); }
   function applyTheme() {
@@ -60,6 +67,8 @@
     try { const r = await api('/api/config'); cfg = await r.json(); } catch {}
   }
   let backupSheet = false;
+  let envApp = null;
+  function openEnv(nm) { envApp = nm; }
   async function refreshAll() { refreshing = true; await Promise.all([loadStats(), loadCfg()]); refreshing = false; showToast('Dimuat ulang'); }
   async function act(name, action) {
     await api('/api/apps/' + name + '/' + action, { method: 'POST' });
@@ -73,7 +82,7 @@
       showToast(name + (val ? ' jadi Publik' : ' jadi Private')); loadApps();
     } catch (e) { showToast('Gagal ubah: ' + e.message); }
   }
-  function go(v) { if (v === 'terminal') termTargetApp = ''; view = v; drawer = false; location.hash = v; if (v === 'home') loadStats(); if (v === 'apps') loadApps(); if (v === 'settings') loadCfg(); }
+  function go(v) { if (v === 'terminal') { termTargetApp = ''; ensureTerminal(); } view = v; drawer = false; location.hash = v; if (v === 'home') loadStats(); if (v === 'apps') loadApps(); if (v === 'settings') loadCfg(); }
   function openLogs(name) { focusApp = name; go('logs'); }
   async function deleteApp(name) {
     if (!window.confirm('Hapus app ' + name + ' beserta seluruh foldernya? Tindakan ini tidak bisa dibatalkan.')) return;
@@ -137,9 +146,9 @@
     <main class:wide={view === 'terminal'}>
       {#key view}
         <div class="anim-fade">
-          {#if view === 'home'}<Home {apps} {stats} onAct={act} onOpenSheet={() => openSheetFor(null)} onOpenLogs={openLogs} onOpenFiles={openFiles} onRefresh={refreshAll} onDelete={deleteApp} onSetup={openSheetFor} onOpenTerm={openTerm} onTogglePublic={togglePublic} />{/if}
-          {#if view === 'apps'}<Apps {apps} onAct={act} onOpenSheet={() => openSheetFor(null)} onOpenLogs={openLogs} onOpenFiles={openFiles} onDelete={deleteApp} onSetup={openSheetFor} onOpenTerm={openTerm} onTogglePublic={togglePublic} />{/if}
-          {#if view === 'terminal'}<TerminalView {apps} initialApp={termTargetApp} onOpenLogs={openLogs} />{/if}
+          {#if view === 'home'}<Home {apps} {stats} onAct={act} onOpenSheet={() => openSheetFor(null)} onOpenLogs={openLogs} onOpenFiles={openFiles} onRefresh={refreshAll} onDelete={deleteApp} onSetup={openSheetFor} onOpenTerm={openTerm} onTogglePublic={togglePublic} onEnv={openEnv} />{/if}
+          {#if view === 'apps'}<Apps {apps} onAct={act} onOpenSheet={() => openSheetFor(null)} onOpenLogs={openLogs} onOpenFiles={openFiles} onDelete={deleteApp} onSetup={openSheetFor} onOpenTerm={openTerm} onTogglePublic={togglePublic} onEnv={openEnv} />{/if}
+          {#if view === 'terminal'}{#if TerminalView}<svelte:component this={TerminalView} {apps} initialApp={termTargetApp} onOpenLogs={openLogs} />{:else}<div class="center">Memuat terminal...</div>{/if}{/if}
           {#if view === 'logs'}<Logs {apps} focusApp={focusApp} />{/if}
           {#if view === 'files'}{#key fileNonce}<FileManager initialPath={filePath} onToast={showToast} />{/key}{/if}
           {#if view === 'domain'}<Domain />{/if}
@@ -153,6 +162,7 @@
   </nav>
   <BottomSheet open={sheet} {apps} editApp={editApp} onClose={closeSheet} onCreated={(nm) => { showToast('App ' + nm + ' dibuat'); loadApps(); go('apps'); }} />
   <BackupSheet open={backupSheet} onClose={() => backupSheet = false} />
+  {#if envApp}<EnvSheet appName={envApp} onClose={() => envApp = null} onSaved={loadApps} onToast={showToast} />{/if}
   {#if toast}<div class="toast">{toast}</div>{/if}
 {/if}
 

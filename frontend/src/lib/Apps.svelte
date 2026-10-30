@@ -1,6 +1,6 @@
 <script>
   import Icon from './Icon.svelte';
-  export let apps = [], onAct, onOpenSheet, onOpenLogs, onOpenFiles, onDelete, onSetup, onOpenTerm, onTogglePublic;
+  export let apps = [], onAct, onOpenSheet, onOpenLogs, onOpenFiles, onDelete, onSetup, onOpenTerm, onTogglePublic, onEnv;
   let q = '', filter = 'all';
   $: list = apps.filter(a => {
     if (filter === 'running' && a.status !== 'running') return false;
@@ -37,6 +37,7 @@
           <button class="btn small" on:click|stopPropagation={() => onOpenTerm && onOpenTerm(a.name)}><Icon name="terminal" size={14} /> Terminal</button>
           <button class="btn small" on:click|stopPropagation={() => onOpenFiles && onOpenFiles('apps/' + a.name)}><Icon name="folder" size={14} /> File</button>
           <button class="btn small" on:click|stopPropagation={() => onSetup && onSetup(a.name)}><Icon name="settings" size={14} /> Setup</button>
+          <button class="btn small" on:click|stopPropagation={() => onEnv && onEnv(a.name)}><Icon name="edit" size={14} /> Env</button>
           <button class="btn small danger" on:click|stopPropagation={() => onDelete && onDelete(a.name)}><Icon name="trash" size={14} /> Hapus</button>
         </div>
       </div>
@@ -47,7 +48,7 @@
 <style>
   .title{font-size:24px;letter-spacing:-.02em;margin:4px 0 4px}
   .sub{color:var(--muted);font-size:14px;margin:0 0 16px}
-  .searchrow{display:flex;gap:8px;align-items:center;background:var(--glass-bg);-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border:1px solid var(--glass-border);border-radius:12px;padding:0 12px}
+  .searchrow{display:flex;gap:8px;align-items:center;background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:12px;padding:0 12px}
   .searchrow input{border:none;background:transparent;padding:11px 0}
   .searchrow input:focus{border:none}
   .list{display:grid;gap:14px}

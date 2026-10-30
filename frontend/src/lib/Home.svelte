@@ -1,7 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import Icon from './Icon.svelte';
-  export let apps = [], stats = null, onAct, onOpenSheet, onOpenLogs, onOpenFiles, onRefresh, onDelete, onSetup, onOpenTerm, onTogglePublic;
+  export let apps = [], stats = null, onAct, onOpenSheet, onOpenLogs, onOpenFiles, onRefresh, onDelete, onSetup, onOpenTerm, onTogglePublic, onEnv;
   function fmtBytes(n){ if(n==null) return '-'; if(n>1e9) return (n/1e9).toFixed(1)+' GB'; if(n>1e6) return (n/1e6).toFixed(0)+' MB'; if(n>1e3) return (n/1e3).toFixed(0)+' KB'; return n+' B'; }
   function fmtUptime(s){ if(!s) return '0 dtk'; if(s<60) return s+' dtk'; if(s<3600) return Math.floor(s/60)+' mnt'; return (s/3600).toFixed(1)+' jam'; }
 
@@ -177,6 +177,7 @@
           <button class="btn small" on:click|stopPropagation={() => onOpenTerm && onOpenTerm(a.name)}><Icon name="terminal" size={14} /> Terminal</button>
           <button class="btn small" on:click|stopPropagation={() => onOpenFiles && onOpenFiles('apps/' + a.name)}><Icon name="folder" size={14} /> File</button>
           <button class="btn small" on:click|stopPropagation={() => onSetup && onSetup(a.name)}><Icon name="settings" size={14} /> Setup</button>
+          <button class="btn small" on:click|stopPropagation={() => onEnv && onEnv(a.name)}><Icon name="edit" size={14} /> Env</button>
           <button class="btn small danger" on:click|stopPropagation={() => onDelete && onDelete(a.name)}><Icon name="trash" size={14} /> Hapus</button>
         </div>
       </div>
